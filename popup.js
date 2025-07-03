@@ -25,13 +25,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function showLoading(message) {
         mainContentDiv.style.display = 'none'; // Hide main content
         loadingIndicator.style.display = 'block'; // Show loading spinner
-        loadingMessage.textContent = message; // Corrected: Use loadingMessage
+        loadingMessage.textContent = message;
         hideError(); // Clear any previous error
     }
 
     function hideLoading() {
         loadingIndicator.style.display = 'none'; // Hide loading spinner
-        loadingMessage.textContent = ''; // Corrected: Use loadingMessage to clear its text
+        loadingMessage.textContent = '';
         mainContentDiv.style.display = 'block'; // Show main content
     }
 
@@ -60,36 +60,65 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Message Listeners from Background Script ---
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'updateLoading') {
-            showLoading(request.message); // Use the centralized showLoading
+            showLoading(request.message);
             sendResponse({ success: true });
         } else if (request.action === 'scrapedData') {
             currentScrapedImages = request.images;
             currentScrapedData = request.data;
             displayResults(currentScrapedImages, currentScrapedData);
-            hideLoading(); // Hide loading once data is displayed
+            hideLoading();
             sendResponse({ success: true });
         } else if (request.action === 'error') {
-            showError(request.message); // Use the centralized showError
+            showError(request.message);
             sendResponse({ success: true });
         } else if (request.action === 'themeChanged') {
             applyTheme(request.theme);
             sendResponse({ success: true });
         }
-        // Return true for async sendResponse if needed, but for simple messaging, not always strictly necessary.
-        return true;
+        // --- IMPORTANT FIX: Handle ZIP download initiation from background script ---
+        else if (request.action === 'initiateZipDownloadInPopup') {
+            console.log("Popup: Received request to initiate ZIP download.");
+            showLoading(`Starting download for ${request.filename}...`);
+
+            const zipBlob = request.blob;
+            const zipFilename = request.filename;
+            if (zipBlob) {
+                const downloadUrl = URL.createObjectURL(zipBlob);
+                chrome.downloads.download({
+                    url: downloadUrl,
+                    filename: zipFilename,
+                    saveAs: true
+                }, (downloadId) => {
+                    if (chrome.runtime.lastError) {
+                        console.error(`Download failed: ${chrome.runtime.lastError.message}`);
+                        showError(`Failed to download ZIP: ${chrome.runtime.lastError.message}`);
+                    } else {
+                        console.log(`Download started (ID: ${downloadId})`);
+                        showLoading(`Download of "${zipFilename}" started successfully!`);
+                        setTimeout(hideLoading, 3000); // Hide loading after 3 seconds
+                    }
+                    URL.revokeObjectURL(downloadUrl); // Clean up the URL object
+                    sendResponse({ success: true }); // Acknowledge receipt of this message
+                });
+            } else {
+                showError("Error: No ZIP blob received for download.");
+                sendResponse({ success: false, message: "No ZIP blob received." });
+            }
+            return true; // Keep port open for async download callback
+        }
+        return true; // Keep the message channel open for other async responses
     });
 
     // --- UI Event Listeners ---
 
     scrapeButton.addEventListener('click', () => {
         const url = urlInput.value.trim();
-        showLoading(url ? `Scraping ${url}...` : 'Scraping current tab...'); // Show loading immediately
+        showLoading(url ? `Scraping ${url}...` : 'Scraping current tab...');
 
         chrome.runtime.sendMessage({ action: 'scrapeUrl', url: url }, (response) => {
             if (!response || !response.success) {
                 showError(`Failed to initiate scraping: ${response ? response.message : 'Unknown error.'}`);
             }
-            // Further loading updates will come from background.js via 'updateLoading' message
         });
     });
 
@@ -103,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const checkboxes = document.querySelectorAll('.image-checkbox');
         const allSelected = Array.from(checkboxes).every(cb => cb.checked);
         checkboxes.forEach(cb => cb.checked = !allSelected);
-        updateDownloadSelectedButtonVisibility(); // Update button visibility after selection change
+        updateDownloadSelectedButtonVisibility();
     });
 
     // Download Selected Images (ZIP)
@@ -116,17 +145,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        showLoading(`Initiating ZIP download for ${selectedImages.length} images...`); // Show loading immediately
+        showLoading(`Initiating ZIP download for ${selectedImages.length} images...`);
 
         chrome.runtime.sendMessage({
-            action: 'downloadImagesAsZip', // Action for ZIP download
+            action: 'downloadImagesAsZip',
             urls: selectedImages,
-            pageTitle: currentScrapedData ? currentScrapedData.pageTitle : 'scraped_images' // Pass page title
+            pageTitle: currentScrapedData ? currentScrapedData.pageTitle : 'scraped_images'
         }, (response) => {
             if (!response || !response.success) {
                 showError(`Failed to initiate ZIP download: ${response ? response.message : 'Unknown error.'}`);
             }
-            // Further loading updates will come from background.js via 'updateLoading' message
+            // Further loading updates and download initiation will come from background.js
         });
     });
 
@@ -136,12 +165,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const jsonString = JSON.stringify(currentScrapedData, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            const filename = `${currentScrapedData.pageTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'scraped_data'}.json`; // Sanitize filename
+            const filename = `${currentScrapedData.pageTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'scraped_data'}.json`;
             chrome.downloads.download({
                 url: url,
                 filename: filename
             }, () => {
-                URL.revokeObjectURL(url); // Clean up the URL object
+                URL.revokeObjectURL(url);
             });
         } else {
             showError('No JSON data to download.');
@@ -182,24 +211,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const img = document.createElement('img');
                 img.src = src;
                 img.alt = 'Image preview';
-                img.title = src; // Show full URL on hover
-                img.onerror = () => { img.src = 'icons/placeholder.png'; img.title = 'Image failed to load: ' + src; }; // Fallback
+                img.title = src;
+                img.onerror = () => { img.src = 'icons/placeholder.png'; img.title = 'Image failed to load: ' + src; };
 
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.classList.add('image-checkbox');
                 checkbox.value = src;
                 checkbox.checked = true; // Default to selected
-                checkbox.addEventListener('change', updateDownloadSelectedButtonVisibility); // Update button when checkbox changes
+                checkbox.addEventListener('change', updateDownloadSelectedButtonVisibility);
 
                 itemDiv.appendChild(img);
                 itemDiv.appendChild(checkbox);
                 imagePreviews.appendChild(itemDiv);
             });
-            updateDownloadSelectedButtonVisibility(); // Ensure button is visible if images are present
+            updateDownloadSelectedButtonVisibility();
         } else {
             imagePreviews.innerHTML = '<p>No images found on this page, or they could not be scraped. Try a different URL or check options.</p>';
-            downloadSelectedButton.style.display = 'none'; // Hide if no images
+            downloadSelectedButton.style.display = 'none';
         }
 
         if (scrapedData) {
@@ -215,20 +244,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!imageUrls || imageUrls.length === 0) return;
 
         const sortOrder = sortImagesSelect.value;
-        let sortedImages = [...imageUrls]; // Create a copy to sort
+        let sortedImages = [...imageUrls];
 
         if (sortOrder === 'url-asc') {
             sortedImages.sort((a, b) => a.localeCompare(b));
         } else if (sortOrder === 'url-desc') {
             sortedImages.sort((a, b) => b.localeCompare(a));
         }
-        // 'none' means default order, no sort needed
 
-        displayImagePreviews(sortedImages); // Re-render previews based on sorted order
+        displayImagePreviews(sortedImages);
     }
 
     function displayImagePreviews(imageUrls) {
-        imagePreviews.innerHTML = ''; // Clear previous previews
+        imagePreviews.innerHTML = '';
         if (imageUrls && imageUrls.length > 0) {
             imageUrls.forEach(src => {
                 const itemDiv = document.createElement('div');
@@ -244,10 +272,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkbox.type = 'checkbox';
                 checkbox.classList.add('image-checkbox');
                 checkbox.value = src;
+
                 // Preserve checked state if images are re-rendered after sorting
-                const currentCheckboxes = Array.from(document.querySelectorAll('.image-checkbox'));
-                const prevChecked = currentCheckboxes.find(cb => cb.value === src && cb.checked);
-                checkbox.checked = prevChecked ? true : true; // Default to checked
+                // This logic might be tricky if you re-render ALL images.
+                // A simpler approach for sorting if checkboxes are already rendered
+                // might be to just reorder the DOM elements directly,
+                // or ensure you re-check based on currentScrapedImages or a separate set of selected URLs.
+                // For simplicity here, it defaults to checked if found in currentScrapedImages:
+                checkbox.checked = currentScrapedImages.includes(src); // Keep existing checked state
+                if (!checkbox.checked) { // If it wasn't already checked, default to true
+                    checkbox.checked = true;
+                }
 
                 checkbox.addEventListener('change', updateDownloadSelectedButtonVisibility);
 
@@ -276,4 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial display state when popup opens
     hideLoading();
     hideError();
-});
+    // Load initial images if any were scraped from previous session (unlikely for a popup)
+    // displayResults(currentScrapedImages, currentScrapedData); // You might want this if you persist state
+
+}); // End of document.addEventListener('DOMContentLoaded'

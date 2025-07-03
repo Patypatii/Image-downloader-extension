@@ -154,38 +154,24 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
             const zipBlob = await zip.generateAsync({ type: 'blob' });
 
-            // Download the ZIP file
-            const downloadUrl = URL.createObjectURL(zipBlob);
-            chrome.downloads.download({
-                url: downloadUrl,
-                filename: zipFilename,
-                saveAs: true // Prompt user for save location
-            }, (downloadId) => {
-                if (chrome.runtime.lastError) {
-                    console.error(`ZIP download failed: ${chrome.runtime.lastError.message}`);
-                    chrome.runtime.sendMessage({ action: 'error', message: `Failed to download ZIP: ${chrome.runtime.lastError.message}` });
-                } else {
-                    console.log(`ZIP download started (ID: ${downloadId})`);
-                    chrome.runtime.sendMessage({ action: 'updateLoading', message: 'ZIP download initiated successfully!' });
-                    chrome.notifications.create({
-                        type: 'basic',
-                        iconUrl: 'icons/icon48.png',
-                        title: 'ZIP Download Started!', // Changed from 'Complete' as it's just initiated
-                        message: `Successfully started download of "${zipFilename}".`,
-                        priority: 1
-                    });
-                }
-                URL.revokeObjectURL(downloadUrl); // Clean up the URL object for memory management
+            // --- NEW CODE: Send the blob to the popup for download initiation ---
+            chrome.runtime.sendMessage({
+                action: 'initiateZipDownloadInPopup',
+                blob: zipBlob,
+                filename: zipFilename
             });
 
-            sendResponse({ success: true, message: 'ZIP generation and download initiated.' });
+            // Acknowledge receipt of initial downloadImagesAsZip request from popup
+            // This is important to resolve the 'message port closed' error for the initial request.
+            sendResponse({ success: true, message: 'ZIP generation initiated in background.' });
 
         } catch (zipError) {
-            console.error('Error generating ZIP:', zipError);
+            console.error('Error generating ZIP in background:', zipError);
             chrome.runtime.sendMessage({ action: 'error', message: `Error creating ZIP: ${zipError.message}` });
             sendResponse({ success: false, message: `Error creating ZIP: ${zipError.message}` });
         }
         return true; // Keep the message channel open for async operations
+
     } else if (request.action === 'themeChanged') {
         // This message is typically from options.js to background.js.
         // If other parts of the extension (like a persistent UI in the future) needed theme updates,
