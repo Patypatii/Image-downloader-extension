@@ -1,0 +1,36 @@
+[
+    {
+        "id": "jumia_product_page_v1",
+        "domain": "jumia.co.ke",
+        "page_type": "product_detail",
+        "description": "Rule for Jumia product detail pages.",
+        "active": true,
+        "selectors": {
+            "main_image": ".product-image-gallery__image img",
+            "thumbnail_images": ".gallery-thumb-list img",
+            "product_name": ".product-name",
+            "product_price": ".product-price"
+        },
+        "behavior": {
+            "max_scrolls": 0,
+            "click_element_after_scroll": null,
+            "wait_for_selector": ".product-image-gallery__image img"
+        }
+    },
+    {
+        "id": "generic_page_v1",
+        "domain": "default",
+        "page_type": "generic",
+        "description": "Fallback rule for any page not matching a specific rule.",
+        "active": true,
+        "selectors": {
+            "main_images": "img",
+            "background_images_css": "div, span, section, article"
+        },
+        "behavior": {
+            "max_scrolls": 5,
+            "scroll_delay_ms": 1500,
+            "scrape_css_backgrounds": true
+        }
+    }
+]
