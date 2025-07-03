@@ -1,7 +1,4 @@
-// ImageScraperExtension/background.js
-
-// Import JSZip library. This needs to be at the top of your service worker file.
-importScripts('/lib/jszip.min.js');
+import JSZip from 'jszip';
 
 // --- Global variables (if any) or shared utility functions ---
 // Not strictly global in the same way as main browser thread, but accessible within the service worker.
