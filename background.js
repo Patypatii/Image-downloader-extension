@@ -61,7 +61,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 // Execute content.js in the determined tab
                 await chrome.scripting.executeScript({
                     target: { tabId: tabIdToScrape },
-                    files: ['content/content.js'] // Path to your main content script
+                    files: ['content.bundle.js']
                 });
 
                 // Send message to content script to start scraping.
