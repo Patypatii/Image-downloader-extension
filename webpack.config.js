@@ -22,7 +22,7 @@ module.exports = {
                 { from: 'popup.html', to: 'popup.html' },
                 { from: 'options.html', to: 'options.html' },
                 { from: 'style.css', to: 'style.css' },
-                { from: 'icons', to: 'icons' }
+                //{ from: 'icons', to: 'icons' }
                 // If you have other assets or HTML files, copy them here
             ],
         }),

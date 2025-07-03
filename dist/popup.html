@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Image Scraper</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="loadingIndicator" style="display: none;">
+        <div class="spinner"></div>
+        <p id="loadingMessage">Scraping page...</p>
+    </div>
+
+    <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+    <div id="mainContent">
+        <h1>Image Scraper</h1>
+        <div class="input-group">
+            <input type="text" id="urlInput" placeholder="Enter URL (optional)">
+            <button id="scrapeButton">Scrape Page</button>
+        </div>
+
+        <div class="controls-container">
+            <h2>Image Previews:</h2>
+            <div class="sort-controls">
+                <label for="sortImages">Sort by:</label>
+                <select id="sortImages">
+                    <option value="none">Default</option>
+                    <option value="url-asc">URL (A-Z)</option>
+                    <option value="url-desc">URL (Z-A)</option>
+                </select>
+            </div>
+        </div>
+        <div id="imagePreviews">
+            <p>No images yet. Enter a URL and click 'Scrape'.</p>
+        </div>
+
+        <div class="image-actions">
+            <button id="selectAllButton">Select All</button>
+            <button id="downloadSelectedButton" style="display: none;">Download Selected Images</button>
+        </div>
+
+        <h2>Scraped Data (JSON):</h2>
+        <pre id="jsonData"></pre>
+        <div class="bottom-buttons">
+            <button id="downloadJsonButton" style="display: none;">Download JSON</button>
+            <button id="reportBugButton">Report a Bug</button>
+        </div>
+    </div>
+
+    <script src="popup.bundle.js"></script>
+</body>
+
+</html>
