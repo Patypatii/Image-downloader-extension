@@ -4,6 +4,18 @@
 let currentScrapedImages = [];
 let currentScrapedData = null;
 
+// Helper function to convert Base64 string to ArrayBuffer
+function base64ToArrayBuffer(base64) {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- UI Element References ---
     const urlInput = document.getElementById('urlInput');
@@ -75,15 +87,40 @@ document.addEventListener('DOMContentLoaded', () => {
             applyTheme(request.theme);
             sendResponse({ success: true });
         }
-        // --- IMPORTANT FIX: Handle ZIP download initiation from background script ---
+        // --- Handle ZIP download initiation from background script ---
         else if (request.action === 'initiateZipDownloadInPopup') {
             console.log("Popup: Received request to initiate ZIP download.");
             showLoading(`Starting download for ${request.filename}...`);
 
-            const zipBlob = request.blob;
+            // --- NEW: Receive Base64 string and decode it ---
+            const base64ZipData = request.base64ZipData;
+            const blobType = request.blobType;
             const zipFilename = request.filename;
-            if (zipBlob) {
+
+            // --- DEBUGGING LOGS (keep these for now to confirm fix) ---
+            console.log("Popup Debug: Received base64ZipData (length):", base64ZipData ? base64ZipData.length : 'N/A');
+            console.log("Popup Debug: Received blobType:", blobType);
+            // --- END DEBUGGING LOGS ---
+
+            // Check if we received valid data to reconstruct the Blob
+            if (typeof base64ZipData === 'string' && base64ZipData.length > 0 && blobType) {
+                // Decode Base64 string back to ArrayBuffer
+                const arrayBuffer = base64ToArrayBuffer(base64ZipData);
+
+                // Reconstruct the Blob using the decoded ArrayBuffer and type
+                const zipBlob = new Blob([arrayBuffer], { type: blobType });
+
+                // --- DEBUGGING LOG ADDED HERE (check reconstructed Blob) ---
+                console.log("Popup Debug: Reconstructed zipBlob:", zipBlob);
+                console.log("Popup Debug: Is reconstructed zipBlob an instance of Blob?", zipBlob instanceof Blob);
+                // --- END DEBUGGING LOG ---
+
                 const downloadUrl = URL.createObjectURL(zipBlob);
+
+                // --- DEBUGGING LOG ADDED HERE ---
+                console.log("Popup Debug: Generated downloadUrl:", downloadUrl);
+                // --- END DEBUGGING LOG ---
+
                 chrome.downloads.download({
                     url: downloadUrl,
                     filename: zipFilename,
@@ -95,14 +132,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         console.log(`Download started (ID: ${downloadId})`);
                         showLoading(`Download of "${zipFilename}" started successfully!`);
-                        setTimeout(hideLoading, 3000); // Hide loading after 3 seconds
+                        // For more precise feedback, you could listen to chrome.downloads.onChanged
+                        setTimeout(hideLoading, 3000); // Hide loading after 3 seconds for now
                     }
                     URL.revokeObjectURL(downloadUrl); // Clean up the URL object
                     sendResponse({ success: true }); // Acknowledge receipt of this message
                 });
             } else {
-                showError("Error: No ZIP blob received for download.");
-                sendResponse({ success: false, message: "No ZIP blob received." });
+                showError("Error: Missing or invalid Base64 data or Blob type for download.");
+                // Provide more detail in the console for debugging this specific error
+                console.error("Popup Error: Blob reconstruction failed. Received:", { base64ZipData: base64ZipData, blobType: blobType });
+                sendResponse({ success: false, message: "Missing or invalid data for Blob reconstruction." });
             }
             return true; // Keep port open for async download callback
         }
@@ -274,13 +314,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkbox.value = src;
 
                 // Preserve checked state if images are re-rendered after sorting
-                // This logic might be tricky if you re-render ALL images.
-                // A simpler approach for sorting if checkboxes are already rendered
-                // might be to just reorder the DOM elements directly,
-                // or ensure you re-check based on currentScrapedImages or a separate set of selected URLs.
-                // For simplicity here, it defaults to checked if found in currentScrapedImages:
-                checkbox.checked = currentScrapedImages.includes(src); // Keep existing checked state
-                if (!checkbox.checked) { // If it wasn't already checked, default to true
+                checkbox.checked = currentScrapedImages.includes(src);
+                if (!checkbox.checked) {
                     checkbox.checked = true;
                 }
 

@@ -1,14 +1,19 @@
+// ImageScraperExtension/background.js
+
 import JSZip from 'jszip';
 
-// --- Global variables (if any) or shared utility functions ---
-// Not strictly global in the same way as main browser thread, but accessible within the service worker.
+// Helper function to convert ArrayBuffer to Base64 string
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
 
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-    // Determine the tabId if the message originated from a tab.
-    // For 'scrapeUrl' from popup, sender.tab will be undefined.
-    // We will query for the active tab specifically for this action.
-    // const senderTabId = sender.tab ? sender.tab.id : null; // <-- This line is NOT used for scrapeUrl anymore
-
     if (request.action === 'scrapeUrl') {
         let tabIdToScrape;
         let targetUrl = request.url; // This comes from the popup's URL input
@@ -16,7 +21,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         console.log("Background: Received 'scrapeUrl' request.");
         console.log("Background: Target URL from popup input:", targetUrl);
 
-        // Query for the currently active tab in the current window
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
 
         console.log("Background: Result of chrome.tabs.query({ active: true, currentWindow: true }):", tabs);
@@ -29,21 +33,19 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         tabIdToScrape = tabs[0].id;
         console.log("Background: Active tab ID identified:", tabIdToScrape);
 
-        // If a target URL was provided in the popup's input, navigate the active tab to it
         if (targetUrl) {
-            // Only navigate if the active tab's current URL is different from the targetUrl
             if (tabs[0].url !== targetUrl) {
                 try {
                     chrome.runtime.sendMessage({ action: 'updateLoading', message: `Navigating to ${targetUrl}...` });
                     await chrome.tabs.update(tabIdToScrape, { url: targetUrl });
-                    // IMPORTANT: For robustness, replace this setTimeout with a chrome.tabs.onUpdated listener
-                    // that waits for status: 'complete' for the given tabId.
+                    // IMPORTANT: For robustness, consider replacing this setTimeout with a
+                    // chrome.tabs.onUpdated listener that waits for status: 'complete'.
                     await new Promise(resolve => setTimeout(resolve, 2000)); // Simple wait for navigation to settle
                     console.log(`Background: Navigated tab ${tabIdToScrape} to ${targetUrl}`);
                 } catch (navError) {
                     console.error(`Background: Failed to navigate to ${targetUrl}:`, navError);
                     sendResponse({ success: false, message: `Failed to navigate to ${targetUrl}: ${navError.message}` });
-                    return true; // Stop execution if navigation fails
+                    return true;
                 }
             } else {
                 console.log(`Background: Active tab is already at target URL: ${targetUrl}. No navigation needed.`);
@@ -52,20 +54,15 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             console.log("Background: No target URL provided. Scraping current active tab.");
         }
 
-        // Now that we have a valid tabIdToScrape and potentially navigated, proceed with scripting
         if (tabIdToScrape) {
             try {
-                // Inform popup that scraping is starting
                 chrome.runtime.sendMessage({ action: 'updateLoading', message: 'Executing content script...' });
 
-                // Execute content.js in the determined tab
                 await chrome.scripting.executeScript({
                     target: { tabId: tabIdToScrape },
                     files: ['content.bundle.js']
                 });
 
-                // Send message to content script to start scraping.
-                // The content script will get the URL directly from window.location.href.
                 await chrome.tabs.sendMessage(tabIdToScrape, { action: 'startScraping' });
                 sendResponse({ success: true, message: 'Scraping initiated.' });
             } catch (error) {
@@ -73,18 +70,14 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 sendResponse({ success: false, message: `Failed to start scraping: ${error.message}` });
             }
         } else {
-            // This else block should ideally not be reached with the above logic,
-            // as we handle 'tabs.length === 0' earlier.
             console.error("Background: Fallback error: tabIdToScrape is undefined.");
             sendResponse({ success: false, message: "Internal error: Could not determine target tab." });
         }
-        return true; // Keep the message channel open for async response
+        return true;
     } else if (request.action === 'scrapedData' || request.action === 'error' || request.action === 'updateLoading') {
-        // These messages are typically from content.js back to the popup.
-        // Forward them directly to the popup (runtime) or a specific tab if needed.
-        // For simplicity and to ensure the popup gets it, just send to runtime.
+        // Forward messages from content script to popup (or other parts of the extension)
         chrome.runtime.sendMessage(request);
-        sendResponse({ success: true }); // Acknowledge receipt
+        sendResponse({ success: true });
         return true;
     } else if (request.action === 'downloadImagesAsZip') {
         const imageUrls = request.urls;
@@ -97,7 +90,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         }
 
         try {
-            // Send initial progress update to the popup
             chrome.runtime.sendMessage({ action: 'updateLoading', message: 'Preparing to download images for ZIP...' });
 
             const zip = new JSZip();
@@ -105,26 +97,21 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
             const fetchPromises = imageUrls.map(async (url, index) => {
                 try {
-                    // Update progress more granularly
                     chrome.runtime.sendMessage({ action: 'updateLoading', message: `Downloading image ${index + 1}/${imageUrls.length}...` });
 
                     const response = await fetch(url);
                     if (!response.ok) {
                         console.warn(`Failed to fetch ${url}: ${response.statusText}`);
-                        return null; // Don't add to zip if fetch failed
+                        return null;
                     }
                     const blob = await response.blob();
 
-                    // --- Improved Filename Derivation ---
-                    const urlPath = new URL(url).pathname; // Get path part of URL
-                    let filename = urlPath.substring(urlPath.lastIndexOf('/') + 1); // Get last part of path
+                    const urlPath = new URL(url).pathname;
+                    let filename = urlPath.substring(urlPath.lastIndexOf('/') + 1);
+                    filename = filename.split('?')[0].split('#')[0]; // Remove query params and hash
 
-                    // Remove query parameters and hash
-                    filename = filename.split('?')[0].split('#')[0];
-
-                    // If filename is empty or looks like a directory, generate a generic one
-                    if (!filename || filename.includes('.') === false) { // Check if it has an extension
-                        const ext = blob.type.split('/')[1] || 'bin'; // Fallback extension
+                    if (!filename || filename.includes('.') === false) {
+                        const ext = blob.type.split('/')[1] || 'bin';
                         filename = `image_${Date.now()}_${index + 1}.${ext}`;
                     } else if (filename.length > 100) { // Prevent excessively long filenames
                         const ext = filename.split('.').pop();
@@ -133,36 +120,37 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
                     zip.file(filename, blob, { binary: true });
                     downloadedCount++;
-                    return filename; // Indicate success
+                    return filename;
                 } catch (fetchError) {
                     console.error(`Error fetching ${url}:`, fetchError);
-                    // No need to send error for individual image failures, just console.warn
-                    return null; // Mark as failed
+                    return null;
                 }
             });
 
-            // Wait for all images to be fetched (even if some failed)
             await Promise.all(fetchPromises);
 
-            // Notify about success/failure of individual image fetches before generating zip
             chrome.runtime.sendMessage({ action: 'updateLoading', message: `Fetched ${downloadedCount} of ${imageUrls.length} images. Generating ZIP file...` });
 
-
-            // Generate the ZIP file
-            const sanitizedPageTitle = pageTitle.replace(/[^a-z0-9\s]/gi, '').trim().replace(/\s+/g, '_').toLowerCase(); // More robust sanitization
-            const zipFilename = `${sanitizedPageTitle || 'scraped_images'}_${Date.now()}.zip`; // Add timestamp for uniqueness
+            const sanitizedPageTitle = pageTitle.replace(/[^a-z0-9\s]/gi, '').trim().replace(/\s+/g, '_').toLowerCase();
+            const zipFilename = `${sanitizedPageTitle || 'scraped_images'}_${Date.now()}.zip`;
 
             const zipBlob = await zip.generateAsync({ type: 'blob' });
 
-            // --- NEW CODE: Send the blob to the popup for download initiation ---
+            // --- NEW: Convert ArrayBuffer to Base64 string for reliable transfer ---
+            const arrayBuffer = await zipBlob.arrayBuffer();
+            const base64ZipData = arrayBufferToBase64(arrayBuffer); // Convert to Base64
+            const blobType = zipBlob.type;
+
+            console.log("Background Debug: Sending Base64 data length:", base64ZipData.length);
+            console.log("Background Debug: Sending blobType:", blobType);
+
             chrome.runtime.sendMessage({
                 action: 'initiateZipDownloadInPopup',
-                blob: zipBlob,
+                base64ZipData: base64ZipData, // Send the Base64 string
+                blobType: blobType,
                 filename: zipFilename
             });
 
-            // Acknowledge receipt of initial downloadImagesAsZip request from popup
-            // This is important to resolve the 'message port closed' error for the initial request.
             sendResponse({ success: true, message: 'ZIP generation initiated in background.' });
 
         } catch (zipError) {
@@ -170,12 +158,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             chrome.runtime.sendMessage({ action: 'error', message: `Error creating ZIP: ${zipError.message}` });
             sendResponse({ success: false, message: `Error creating ZIP: ${zipError.message}` });
         }
-        return true; // Keep the message channel open for async operations
-
+        return true;
     } else if (request.action === 'themeChanged') {
-        // This message is typically from options.js to background.js.
-        // If other parts of the extension (like a persistent UI in the future) needed theme updates,
-        // you'd forward it here. For now, it's just a confirmation.
         sendResponse({ success: true });
         return true;
     }
