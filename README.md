@@ -50,7 +50,9 @@ The extension should now appear in your list of extensions, and its icon will be
 
 ## 📂 File Structure
 
-The project follows a structured approach, utilizing Webpack for bundling and organizing source files:
+The project follows a structured approach, utilizing Webpack for bundling and organizing source files, and includes specialized scraper modules.
+
+.
 ├── .github/                       # GitHub-specific configurations (e.g., CI/CD workflows, issue templates)
 ├── .gitignore                     # Specifies files and directories to be ignored by Git
 ├── .eslintrc.js                   # ESLint configuration for maintaining code quality
@@ -60,12 +62,12 @@ The project follows a structured approach, utilizing Webpack for bundling and or
 ├── CHANGES                        # Project changelog
 ├── component                      # Component-related configuration
 ├── content/                       # Source directory for content scripts
-│   ├── scrapers/                  # Dedicated modules for scraping specific websites
+│   ├── scrapers/                  # Contains specialized scraping logic for different websites
 │   │   ├── facebookScraper.js     # Logic for scraping Facebook content
 │   │   ├── genericScraper.js      # General-purpose scraping logic
 │   │   └── jumiaScraper.js        # Logic for scraping Jumia content
 │   └── content.js                 # Main content script injected into web pages
-├── data/                          # Data files used by the extension
+├── data/                          # Directory for data files
 │   └── default_rules.json         # Default scraping rules or configurations
 ├── dist/                          # Output directory for Webpack-bundled files (this folder is loaded into Chrome)
 │   ├── background.bundle.js       # Bundled and optimized background script
@@ -86,7 +88,7 @@ The project follows a structured approach, utilizing Webpack for bundling and or
 ├── index.js                       # Main JavaScript file (could be for a dev server or larger project)
 ├── lib/                           # Utility or shared library scripts
 ├── LICENSE                        # Project's license file
-├── node_modules/                  # Directory for all npm installed dependencies
+├── node_modules/                  # Directory containing installed Node.js modules (dependencies)
 ├── options.html                   # Source HTML for the extension's options page
 ├── options.js                     # Source JavaScript for the options page logic
 ├── package-lock.json              # Records exact dependency versions for consistent builds
@@ -100,7 +102,6 @@ The project follows a structured approach, utilizing Webpack for bundling and or
 ├── tsconfig.json                  # TypeScript configuration file
 ├── vendor/                        # Third-party vendor assets or libraries
 └── webpack.config.js              # Webpack configuration file for bundling assets
-
 
 ## 📸 Screenshots
 
